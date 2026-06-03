@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scanner OCR POS</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+body{font-family:Arial,sans-serif;background:#111;color:white;text-align:center;padding:20px}
+video{width:100%;max-width:500px;border-radius:12px;border:2px solid #444}
+button{margin-top:15px;padding:12px 20px;border:none;border-radius:10px;background:#00b894;color:white;font-size:16px;cursor:pointer}
+#manual{margin-top:15px;width:90%;max-width:500px;padding:12px;border-radius:10px;border:none;font-size:18px;text-align:center}
+#resultado{margin-top:20px;font-size:22px;font-weight:bold;color:white;word-break:break-word}
+canvas{display:none}
+</style>
+</head>
+<body>
+
+<h1>Scanner OCR POS</h1>
+<p>Apuntá al serial del POS y tocá ESCANEAR</p>
+
+<video id="video" autoplay playsinline></video>
+<br>
+<button onclick="capturarYLeer()">ESCANEAR</button>
+<br>
+<input id="manual" type="text" placeholder="Ingresar serial manualmente y presionar ENTER">
+<div id="resultado">Esperando lectura...</div>
+<canvas id="canvas"></canvas>
+
+<script>
+const URL_SCRIPT='https://script.google.com/macros/s/AKfycbyrWrFdOFQEO3JsflGiOnjIvlFCLFBl9m2hdJ5E1ldM44koKEgr2zOS0c6Wq4FQPwIZ/exec';
+
+const video=document.getElementById('video');
+const canvas=document.getElementById('canvas');
+const resultado=document.getElementById('resultado');
+const manual=document.getElementById('manual');
+
+async function iniciarCamara(){
+ try{
+  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  video.srcObject=stream;
+ }catch(err){
+  resultado.style.color='orange';
+  resultado.innerText='Error accediendo a la cámara';
+ }
+}
+iniciarCamara();
+
+function beep(){
+ const audioContext=new(window.AudioContext||window.webkitAudioContext)();
+ const oscillator=audioContext.createOscillator();
+ const gainNode=audioContext.createGain();
+ oscillator.connect(gainNode);
+ gainNode.connect(audioContext.destination);
+ oscillator.frequency.value=900;
+ oscillator.start();
+ gainNode.gain.exponentialRampToValueAtTime(0.0001,audioContext.currentTime+0.15);
+ oscillator.stop(audioContext.currentTime+0.15);
+}
+
+async function guardarSerial(serial){
+ try{
+  await fetch(URL_SCRIPT,{
+   method:'POST',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({serial:serial,tipo:''})
+  });
+ }catch(e){console.log(e);}
+}
+
+function serialValido(serial){
+ return /^NMS212[A-Z0-9]{11}$/.test(serial) ||
+        /^V377[A-Z0-9]{9}$/.test(serial) ||
+        /^V390[A-Z0-9]{9}$/.test(serial) ||
+        /^V283[A-Z0-9]{9}$/.test(serial) ||
+        /^V255[A-Z0-9]{9}$/.test(serial);
+}
+
+function buscarSerial(texto){
+ texto=texto.replace(/\s+/g,'').replace(/[^A-Z0-9]/g,'').toUpperCase();
+ const patrones=[
+  /NMS212[A-Z0-9]{11}/,
+  /V377[A-Z0-9]{9}/,
+  /V390[A-Z0-9]{9}/,
+  /V283[A-Z0-9]{9}/,
+  /V255[A-Z0-9]{9}/
+ ];
+ for(const patron of patrones){
+  const match=texto.match(patron);
+  if(match) return match[0];
+ }
+ return null;
+}
+
+async function capturarYLeer(){
+ resultado.style.color='white';
+ resultado.innerText='Leyendo...';
+
+ const context=canvas.getContext('2d');
+ canvas.width=video.videoWidth;
+ canvas.height=video.videoHeight;
+
+ context.drawImage(video,0,0,canvas.width,canvas.height);
+
+ const cropY=canvas.height*0.55;
+ const cropHeight=canvas.height*0.35;
+
+ const tempCanvas=document.createElement('canvas');
+ tempCanvas.width=canvas.width;
+ tempCanvas.height=cropHeight;
+
+ const tempCtx=tempCanvas.getContext('2d');
+
+ tempCtx.drawImage(
+  canvas,
+  0,cropY,canvas.width,cropHeight,
+  0,0,canvas.width,cropHeight
+ );
+
+ try{
+  const {data:{text}}=await Tesseract.recognize(tempCanvas.toDataURL('image/png'),'eng');
+  const serial=buscarSerial(text);
+
+  if(serial){
+   resultado.style.color='#00ff00';
+   resultado.innerText=serial;
+   beep();
+   try{await navigator.clipboard.writeText(serial);}catch(e){}
+   await guardarSerial(serial);
+  }else{
+   resultado.style.color='orange';
+   resultado.innerText='No se detectó serial válido';
+  }
+ }catch(e){
+  resultado.style.color='orange';
+  resultado.innerText='Error OCR';
+ }
+}
+
+manual.addEventListener('keydown',async(e)=>{
+ if(e.key!=='Enter') return;
+
+ const serial=manual.value.trim().toUpperCase();
+
+ if(!serialValido(serial)){
+  resultado.style.color='orange';
+  resultado.innerText='Serial inválido';
+  return;
+ }
+
+ resultado.style.color='#00ff00';
+ resultado.innerText=serial;
+ beep();
+ await guardarSerial(serial);
+ manual.value='';
+});
+</script>
+
+</body>
+</html>
