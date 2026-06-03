@@ -15,9 +15,7 @@ text-align:center;
 padding:15px;
 }
 
-h1{
-margin-bottom:10px;
-}
+h1{margin-bottom:10px;}
 
 video{
 width:100%;
@@ -30,6 +28,7 @@ border:2px solid #444;
 margin-top:15px;
 font-size:22px;
 font-weight:bold;
+word-break:break-word;
 }
 
 input{
@@ -42,13 +41,8 @@ border:none;
 margin-top:15px;
 }
 
-.ok{
-color:#00ff88;
-}
-
-.error{
-color:#ff5555;
-}
+.ok{color:#00ff88;}
+.error{color:#ff5555;}
 </style>
 </head>
 
@@ -58,7 +52,7 @@ color:#ff5555;
 
 <p>Prueba de cámara</p>
 
-<video id="video" autoplay playsinline></video>
+<video id="video" autoplay playsinline muted></video>
 
 <div id="resultado">
 Iniciando...
@@ -80,11 +74,13 @@ const manual = document.getElementById("manual");
 let ultimoSerial = "";
 
 function beep(){
+try{
 const ctx = new (window.AudioContext || window.webkitAudioContext)();
 const osc = ctx.createOscillator();
 osc.connect(ctx.destination);
 osc.start();
 osc.stop(ctx.currentTime + 0.15);
+}catch(e){}
 }
 
 async function guardarSerial(serial){
@@ -94,9 +90,12 @@ if(serial === ultimoSerial) return;
 
 ultimoSerial = serial;
 
+resultado.className = "";
+resultado.innerText = "Enviando: " + serial;
+
 try{
 
-await fetch(URL_SCRIPT,{
+const response = await fetch(URL_SCRIPT,{
 method:"POST",
 headers:{
 "Content-Type":"application/json"
@@ -107,15 +106,23 @@ tipo:"AUTO"
 })
 });
 
+const texto = await response.text();
+
+if(!response.ok){
+throw new Error("HTTP " + response.status);
+}
+
 beep();
 
 resultado.className="ok";
-resultado.innerText="Guardado: " + serial;
+resultado.innerText="Guardado: " + serial + " | " + texto;
 
 }catch(e){
 
 resultado.className="error";
-resultado.innerText="Error enviando";
+resultado.innerText="ERROR: " + e.message;
+
+console.error(e);
 
 }
 
@@ -131,9 +138,7 @@ try{
 
 const stream = await navigator.mediaDevices.getUserMedia({
 video:{
-facingMode:{
-ideal:"environment"
-}
+facingMode:"environment"
 },
 audio:false
 });
@@ -154,7 +159,7 @@ resultado.innerText="Error cámara: " + err.message;
 
 }
 
-manual.addEventListener("keypress",(e)=>{
+manual.addEventListener("keydown",(e)=>{
 
 if(e.key==="Enter"){
 
