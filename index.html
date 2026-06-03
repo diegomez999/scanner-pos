@@ -3,157 +3,183 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scanner OCR POS</title>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+
+<title>Scanner POS</title>
+
+<script src="https://unpkg.com/@zxing/browser@latest"></script>
+
 <style>
-body{font-family:Arial,sans-serif;background:#111;color:white;text-align:center;padding:20px}
-video{width:100%;max-width:500px;border-radius:12px;border:2px solid #444}
-button{margin-top:15px;padding:12px 20px;border:none;border-radius:10px;background:#00b894;color:white;font-size:16px;cursor:pointer}
-#manual{margin-top:15px;width:90%;max-width:500px;padding:12px;border-radius:10px;border:none;font-size:18px;text-align:center}
-#resultado{margin-top:20px;font-size:22px;font-weight:bold;color:white;word-break:break-word}
-canvas{display:none}
+body{
+background:#111;
+color:white;
+font-family:Arial,sans-serif;
+text-align:center;
+padding:15px;
+}
+
+h1{
+margin-bottom:10px;
+}
+
+video{
+width:100%;
+max-width:500px;
+border-radius:12px;
+border:2px solid #444;
+}
+
+#resultado{
+margin-top:15px;
+font-size:22px;
+font-weight:bold;
+}
+
+input{
+width:90%;
+max-width:500px;
+padding:12px;
+font-size:18px;
+border-radius:10px;
+border:none;
+margin-top:15px;
+}
+
+.ok{
+color:#00ff88;
+}
+
+.error{
+color:#ff5555;
+}
+
+button{
+margin-top:15px;
+padding:12px 20px;
+border:none;
+border-radius:10px;
+background:#00b894;
+color:white;
+font-size:18px;
+cursor:pointer;
+}
 </style>
 </head>
+
 <body>
 
-<h1>Scanner OCR POS</h1>
-<p>Apuntá al serial del POS y tocá ESCANEAR</p>
+<h1>Scanner POS</h1>
 
-<video id="video" autoplay playsinline></video>
-<br>
-<button onclick="capturarYLeer()">ESCANEAR</button>
-<br>
-<input id="manual" type="text" placeholder="Ingresar serial manualmente y presionar ENTER">
-<div id="resultado">Esperando lectura...</div>
-<canvas id="canvas"></canvas>
+<p>Apuntá al código de barras</p>
+
+<video id="video"></video>
+
+<div id="resultado">
+Esperando lectura...
+</div>
+
+<input
+id="manual"
+type="text"
+placeholder="Ingresar serial manualmente y presionar ENTER">
 
 <script>
-const URL_SCRIPT='https://script.google.com/macros/s/AKfycbyrWrFdOFQEO3JsflGiOnjIvlFCLFBl9m2hdJ5E1ldM44koKEgr2zOS0c6Wq4FQPwIZ/exec';
 
-const video=document.getElementById('video');
-const canvas=document.getElementById('canvas');
-const resultado=document.getElementById('resultado');
-const manual=document.getElementById('manual');
+const URL_SCRIPT = "TU_URL_DE_APPS_SCRIPT";
 
-async function iniciarCamara(){
- try{
-  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-  video.srcObject=stream;
- }catch(err){
-  resultado.style.color='orange';
-  resultado.innerText='Error accediendo a la cámara';
- }
-}
-iniciarCamara();
+const video = document.getElementById("video");
+const resultado = document.getElementById("resultado");
+const manual = document.getElementById("manual");
+
+let ultimoSerial = "";
 
 function beep(){
- const audioContext=new(window.AudioContext||window.webkitAudioContext)();
- const oscillator=audioContext.createOscillator();
- const gainNode=audioContext.createGain();
- oscillator.connect(gainNode);
- gainNode.connect(audioContext.destination);
- oscillator.frequency.value=900;
- oscillator.start();
- gainNode.gain.exponentialRampToValueAtTime(0.0001,audioContext.currentTime+0.15);
- oscillator.stop(audioContext.currentTime+0.15);
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const osc = ctx.createOscillator();
+osc.connect(ctx.destination);
+osc.start();
+osc.stop(ctx.currentTime + 0.15);
 }
 
 async function guardarSerial(serial){
- try{
-  await fetch(URL_SCRIPT,{
-   method:'POST',
-   headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({serial:serial,tipo:''})
-  });
- }catch(e){console.log(e);}
-}
 
-function serialValido(serial){
- return /^NMS212[A-Z0-9]{11}$/.test(serial) ||
-        /^V377[A-Z0-9]{9}$/.test(serial) ||
-        /^V390[A-Z0-9]{9}$/.test(serial) ||
-        /^V283[A-Z0-9]{9}$/.test(serial) ||
-        /^V255[A-Z0-9]{9}$/.test(serial);
-}
+if(!serial) return;
 
-function buscarSerial(texto){
- texto=texto.replace(/\s+/g,'').replace(/[^A-Z0-9]/g,'').toUpperCase();
- const patrones=[
-  /NMS212[A-Z0-9]{11}/,
-  /V377[A-Z0-9]{9}/,
-  /V390[A-Z0-9]{9}/,
-  /V283[A-Z0-9]{9}/,
-  /V255[A-Z0-9]{9}/
- ];
- for(const patron of patrones){
-  const match=texto.match(patron);
-  if(match) return match[0];
- }
- return null;
-}
+if(serial === ultimoSerial) return;
 
-async function capturarYLeer(){
- resultado.style.color='white';
- resultado.innerText='Leyendo...';
+ultimoSerial = serial;
 
- const context=canvas.getContext('2d');
- canvas.width=video.videoWidth;
- canvas.height=video.videoHeight;
+resultado.className="ok";
+resultado.innerText="Guardando: " + serial;
 
- context.drawImage(video,0,0,canvas.width,canvas.height);
+try{
 
- const cropY=canvas.height*0.55;
- const cropHeight=canvas.height*0.35;
-
- const tempCanvas=document.createElement('canvas');
- tempCanvas.width=canvas.width;
- tempCanvas.height=cropHeight;
-
- const tempCtx=tempCanvas.getContext('2d');
-
- tempCtx.drawImage(
-  canvas,
-  0,cropY,canvas.width,cropHeight,
-  0,0,canvas.width,cropHeight
- );
-
- try{
-  const {data:{text}}=await Tesseract.recognize(tempCanvas.toDataURL('image/png'),'eng');
-  const serial=buscarSerial(text);
-
-  if(serial){
-   resultado.style.color='#00ff00';
-   resultado.innerText=serial;
-   beep();
-   try{await navigator.clipboard.writeText(serial);}catch(e){}
-   await guardarSerial(serial);
-  }else{
-   resultado.style.color='orange';
-   resultado.innerText='No se detectó serial válido';
-  }
- }catch(e){
-  resultado.style.color='orange';
-  resultado.innerText='Error OCR';
- }
-}
-
-manual.addEventListener('keydown',async(e)=>{
- if(e.key!=='Enter') return;
-
- const serial=manual.value.trim().toUpperCase();
-
- if(!serialValido(serial)){
-  resultado.style.color='orange';
-  resultado.innerText='Serial inválido';
-  return;
- }
-
- resultado.style.color='#00ff00';
- resultado.innerText=serial;
- beep();
- await guardarSerial(serial);
- manual.value='';
+await fetch(URL_SCRIPT,{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+serial:serial,
+tipo:"AUTO"
+})
 });
+
+beep();
+
+resultado.className="ok";
+resultado.innerText="Guardado: " + serial;
+
+}catch(e){
+
+resultado.className="error";
+resultado.innerText="Error enviando";
+
+}
+
+setTimeout(()=>{
+ultimoSerial="";
+},3000);
+
+}
+
+async function iniciarScanner(){
+
+const codeReader = new ZXing.BrowserMultiFormatReader();
+
+const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
+
+await codeReader.decodeFromVideoDevice(
+devices[0]?.deviceId,
+video,
+(result,error)=>{
+
+if(result){
+
+guardarSerial(result.text.trim());
+
+}
+
+}
+);
+
+}
+
+manual.addEventListener("keypress",(e)=>{
+
+if(e.key==="Enter"){
+
+guardarSerial(
+manual.value.trim()
+);
+
+manual.value="";
+
+}
+
+});
+
+iniciarScanner();
+
 </script>
 
 </body>
