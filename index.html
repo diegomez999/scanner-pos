@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
 <title>Scanner POS</title>
+
+<script src="https://unpkg.com/@zxing/browser@latest"></script>
 
 <style>
 body{
@@ -40,11 +43,11 @@ margin-top:15px;
 
 button{
 margin-top:15px;
-padding:12px 25px;
-font-size:18px;
+padding:12px 20px;
+font-size:20px;
 border:none;
 border-radius:10px;
-background:#00b894;
+background:#00c9a7;
 color:white;
 }
 
@@ -62,11 +65,13 @@ color:#ff5555;
 
 <h1>Scanner POS</h1>
 
-<p>Prueba de cámara</p>
+<p>Escaneo de POS</p>
 
-<video id="video" autoplay playsinline muted></video>
+<video id="video" autoplay playsinline></video>
 
-<div id="resultado">Iniciando...</div>
+<div id="resultado">
+Cámara iniciando...
+</div>
 
 <input
 id="manual"
@@ -75,7 +80,7 @@ placeholder="Ingresar serial manualmente">
 
 <br>
 
-<button onclick="enviarManual()">
+<button id="btnScan">
 ESCANEAR
 </button>
 
@@ -86,19 +91,111 @@ const URL_SCRIPT = "https://script.google.com/macros/s/AKfycbyrWrFdOFQEO3JsflGiO
 const video = document.getElementById("video");
 const resultado = document.getElementById("resultado");
 const manual = document.getElementById("manual");
+const btnScan = document.getElementById("btnScan");
+
+let ultimoSerial = "";
+
+function beep(){
+const ctx = new(window.AudioContext||window.webkitAudioContext)();
+const osc = ctx.createOscillator();
+osc.connect(ctx.destination);
+osc.start();
+osc.stop(ctx.currentTime+0.15);
+}
+
+async function guardarSerial(serial,tipo="MANUAL"){
+
+if(!serial) return;
+
+if(serial===ultimoSerial) return;
+
+ultimoSerial=serial;
+
+resultado.innerText="Enviando...";
+
+try{
+
+const r = await fetch(URL_SCRIPT,{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+serial:serial,
+tipo:tipo
+})
+});
+
+const txt = await r.text();
+
+if(txt.indexOf("OK")>=0){
+
+beep();
+
+resultado.className="ok";
+resultado.innerText="Guardado: "+serial;
+
+}else{
+
+resultado.className="error";
+resultado.innerText=txt;
+
+}
+
+}catch(err){
+
+resultado.className="error";
+resultado.innerText="ERROR: "+err.message;
+
+}
+
+setTimeout(()=>{
+ultimoSerial="";
+},3000);
+
+}
+
+manual.addEventListener("keypress",(e)=>{
+
+if(e.key==="Enter"){
+
+guardarSerial(
+manual.value.trim(),
+"MANUAL"
+);
+
+manual.value="";
+
+}
+
+});
+
+btnScan.addEventListener("click",()=>{
+
+guardarSerial(
+manual.value.trim(),
+"MANUAL"
+);
+
+manual.value="";
+
+});
 
 async function iniciarCamara(){
 
 try{
 
-const stream = await navigator.mediaDevices.getUserMedia({
+const stream =
+await navigator.mediaDevices.getUserMedia({
 video:{
 facingMode:"environment"
 },
 audio:false
 });
 
-video.srcObject = stream;
+video.srcObject=stream;
+
+await video.play();
 
 resultado.className="ok";
 resultado.innerText="Cámara iniciada";
@@ -106,64 +203,50 @@ resultado.innerText="Cámara iniciada";
 }catch(err){
 
 resultado.className="error";
-resultado.innerText="Error cámara: " + err.message;
+resultado.innerText="Error cámara: "+err.message;
 
 }
 
 }
 
-async function guardarSerial(serial){
+let codeReader;
 
-if(!serial){
-resultado.className="error";
-resultado.innerText="Ingresá un serial";
-return;
-}
-
-resultado.className="";
-resultado.innerText="Enviando...";
+async function iniciarScanner(){
 
 try{
 
-const respuesta = await fetch(URL_SCRIPT,{
-method:"POST",
-body:JSON.stringify({
-serial:serial,
-tipo:"MANUAL"
-})
-});
+codeReader = new ZXing.BrowserMultiFormatReader();
 
-const texto = await respuesta.text();
+const devices =
+await ZXing.BrowserCodeReader.listVideoInputDevices();
 
-resultado.className="ok";
-resultado.innerText="Respuesta: " + texto;
+await codeReader.decodeFromVideoDevice(
+devices[0]?.deviceId,
+video,
+(result,error)=>{
 
-}catch(error){
-
-resultado.className="error";
-resultado.innerText="ERROR: " + error.message;
-
-}
-
-}
-
-function enviarManual(){
+if(result){
 
 guardarSerial(
-manual.value.trim()
+result.text.trim(),
+"AUTO"
 );
 
 }
 
-manual.addEventListener("keydown",function(e){
+}
+);
 
-if(e.key==="Enter"){
-enviarManual();
+}catch(e){
+
+console.log(e);
+
 }
 
-});
+}
 
 iniciarCamara();
+iniciarScanner();
 
 </script>
 
