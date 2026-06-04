@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -27,7 +28,7 @@ margin:auto;
 margin-top:15px;
 font-size:20px;
 font-weight:bold;
-min-height:60px;
+min-height:80px;
 word-break:break-word;
 }
 
@@ -62,7 +63,7 @@ cursor:pointer;
 
 <h1>Scanner POS</h1>
 
-<p>Apuntá al código de barras</p>
+<p>Apuntá al código o serial</p>
 
 <div id="reader"></div>
 
@@ -83,14 +84,10 @@ ESCANEAR
 
 <script>
 
-const URL_SCRIPT =
-"https://script.google.com/macros/s/AKfycbyrWrFdOFQEO3JsflGiOnjIvlFCLFBl9m2hdJ5E1ldM44koKEgr2zOS0c6Wq4FQPwIZ/exec";
-
 const resultado = document.getElementById("resultado");
 const manual = document.getElementById("manual");
 const btnScan = document.getElementById("btnScan");
 
-let ultimoSerial = "";
 let bloqueado = false;
 
 function beep(){
@@ -103,54 +100,56 @@ osc.stop(ctx.currentTime+0.15);
 }catch(e){}
 }
 
-async function guardarSerial(serial,tipo){
+function identificar(serial){
 
-if(!serial) return;
+const s = serial.toUpperCase().trim();
 
-resultado.className="info";
-resultado.innerText="Guardando: " + serial;
-
-try{
-
-const r = await fetch(URL_SCRIPT,{
-method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-serial:serial,
-tipo:tipo
-})
-});
-
-const txt = await r.text();
-
-if(txt.includes("OK")){
-
-resultado.className="ok";
-resultado.innerText="GUARDADO: " + serial;
-
-}else{
-
-resultado.className="error";
-resultado.innerText=txt;
-
+if(
+(s.startsWith("V283") || s.startsWith("V255"))
+&& s.length === 13
+){
+return "POS COMUN";
 }
 
-}catch(err){
-
-resultado.className="error";
-resultado.innerText="ERROR: " + err.message;
-
+if(
+(s.startsWith("V377") || s.startsWith("V390"))
+&& s.length === 13
+){
+return "POS CHINO";
 }
+
+if(
+s.startsWith("NMS212")
+&& s.length === 17
+){
+return "IMIN";
+}
+
+return "NO IDENTIFICADO";
+}
+
+function mostrarResultado(serial){
+
+const tipo = identificar(serial);
+
+resultado.className =
+tipo==="NO IDENTIFICADO"
+? "error"
+: "ok";
+
+resultado.innerHTML =
+"TIPO: " + tipo +
+"<br><br>" +
+"SERIAL: " + serial;
 
 }
 
 btnScan.addEventListener("click",()=>{
 
-guardarSerial(
-manual.value.trim(),
-"MANUAL"
+if(!manual.value.trim()) return;
+
+mostrarResultado(
+manual.value.trim()
 );
 
 manual.value="";
@@ -183,33 +182,24 @@ bloqueado = true;
 
 beep();
 
-resultado.className="ok";
-resultado.innerText="DETECTADO: " + decodedText;
-
-guardarSerial(
-decodedText.trim(),
-"AUTO"
+mostrarResultado(
+decodedText.trim()
 );
 
 setTimeout(()=>{
-
-resultado.className="info";
-resultado.innerText="Listo para escanear";
-
 bloqueado = false;
-
 },5000);
 
 },
-(errorMessage)=>{
-
-}
-).then(()=>{
+()=>{}
+)
+.then(()=>{
 
 resultado.className="ok";
 resultado.innerText="Scanner iniciado";
 
-}).catch(err=>{
+})
+.catch(err=>{
 
 resultado.className="error";
 resultado.innerText="Error scanner: " + err;
@@ -220,3 +210,4 @@ resultado.innerText="Error scanner: " + err;
 
 </body>
 </html>
+```
