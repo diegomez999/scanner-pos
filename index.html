@@ -91,6 +91,7 @@ const manual = document.getElementById("manual");
 const btnScan = document.getElementById("btnScan");
 
 let ultimoSerial = "";
+let bloqueado = false;
 
 function beep(){
 try{
@@ -106,12 +107,8 @@ async function guardarSerial(serial,tipo){
 
 if(!serial) return;
 
-if(serial===ultimoSerial) return;
-
-ultimoSerial=serial;
-
 resultado.className="info";
-resultado.innerText="Enviando: " + serial;
+resultado.innerText="Guardando: " + serial;
 
 try{
 
@@ -130,10 +127,8 @@ const txt = await r.text();
 
 if(txt.includes("OK")){
 
-beep();
-
 resultado.className="ok";
-resultado.innerText="Guardado: " + serial;
+resultado.innerText="GUARDADO: " + serial;
 
 }else{
 
@@ -148,10 +143,6 @@ resultado.className="error";
 resultado.innerText="ERROR: " + err.message;
 
 }
-
-setTimeout(()=>{
-ultimoSerial="";
-},3000);
 
 }
 
@@ -181,18 +172,33 @@ html5QrCode.start(
 facingMode:"environment"
 },
 {
-fps:10,
+fps:15,
 qrbox:{width:220,height:220}
 },
 (decodedText)=>{
 
-resultado.className="info";
-resultado.innerText="Detectado: " + decodedText;
+if(bloqueado) return;
+
+bloqueado = true;
+
+beep();
+
+resultado.className="ok";
+resultado.innerText="DETECTADO: " + decodedText;
 
 guardarSerial(
 decodedText.trim(),
 "AUTO"
 );
+
+setTimeout(()=>{
+
+resultado.className="info";
+resultado.innerText="Listo para escanear";
+
+bloqueado = false;
+
+},5000);
 
 },
 (errorMessage)=>{
